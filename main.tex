@@ -245,7 +245,7 @@ tensor([[0.2297],
 \subsection{(5 Puan)} \textbf{Kodlarınızın ve sonuçlarınızın olduğu jupyter notebook'un Github repository'sindeki linkini aşağıdaki url kısmının içine yapıştırın. İlk sayfada belirttiğim gün ve saate kadar halka açık (public) olmasın:}
 % size ait Github olmak zorunda, bu vize için ayrı bir github repository'si açıp notebook'u onun içine koyun. Kendine ait olmayıp da arkadaşının notebook'unun linkini paylaşanlar 0 alacak.
 
-\url{https://github.com/sarpataturker/yapay_sinir_aglari.git}
+\url{https://github.com/sarpataturker/yapay_sinir_aglari/tree/main/Feed_Forward}
 
 \section{(Toplam 40 Puan) Multilayer Perceptron (MLP):} 
 \textbf{Bu bölümdeki sorularda benim vize ile beraber paylaştığım Prensesi İyileştir (Cure The Princess) Veri Seti parçaları kullanılacak. Hikaye şöyle (soruyu çözmek için hikaye kısmını okumak zorunda değilsiniz):} 
@@ -273,54 +273,267 @@ Prenses, kendisini iyileştiren veri setini de, gelecekte onların izinden gidec
 \subsection{(10 Puan)} \textbf{Bu MLP'nin pytorch ile yazılmış class'ının kodunu aşağı kod bloğuna yapıştırın:}
 
 \begin{python}
-kod_buraya = None
-if kod_buraya:
-    devam_ise_buraya = 0
+class MLP(nn.Module):
+    def __init__(self, insize, hidden1, hidden2, outputsize):
+        super(MLP, self).__init__()
+        self.hidden_layer1 = nn.Linear(insize, hidden1)
+        self.hidden_layer2 = nn.Linear(hidden1, hidden2)
+        self.output_layer = nn.Linear(hidden2, outputsize)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-print(devam_ise_buraya)
+    def forward(self, x):
+        output = self.relu(self.hidden_layer1(x))
+        output = self.relu(self.hidden_layer2(output))
+        output = self.sigmoid(self.output_layer(output))
+        return output
 \end{python}
 
 \subsection{(10 Puan)} \textbf{SEED=öğrenci numaranız set ettikten sonra altıncı haftada yazdığımız gibi training batch'lerinden eğitim loss'ları, validation batch'lerinden validasyon loss değerlerini hesaplayan kodu aşağıdaki kod bloğuna yapıştırın ve çıkan figürü de alta ekleyin.}
 
 \begin{python}
-kod_buraya = None
-if kod_buraya:
-    devam_ise_buraya = 0
+import time
+start = time.time()
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.preprocessing import MultiLabelBinarizer
+import pandas as pd
+import numpy as np
+import os
+torch.manual_seed(190401015)
+class MLP(nn.Module):
+    def __init__(self, insize, hidden1, hidden2, outputsize):
+        super(MLP, self).__init__()
+        self.hidden_layer1 = nn.Linear(insize, hidden1)
+        self.hidden_layer2 = nn.Linear(hidden1, hidden2)
+        self.output_layer = nn.Linear(hidden2, outputsize)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
-print(devam_ise_buraya)
+    def forward(self, x):
+        output = self.relu(self.hidden_layer1(x))
+        output = self.relu(self.hidden_layer2(output))
+        output = self.sigmoid(self.output_layer(output))
+        return output
+training_data = pd.read_csv("./cure_the_princess_train.csv")
+val_data = pd.read_csv("./cure_the_princess_validation.csv")
+test_data = pd.read_csv("./cure_the_princess_test.csv")
+labels = training_data.columns.tolist()
+num_of_classes = len(labels)
+train_x = training_data.iloc[:, :-1].values
+train_y = training_data.iloc[:, -1].values
+val_x = val_data.iloc[:, :-1].values
+val_y = val_data.iloc[:, -1].values
+test_x = test_data.iloc[:, :-1].values
+test_y = test_data.iloc[:, -1].values
+class CustomData(Dataset):
+    def __init__(self, x, y):
+        self.x = torch.tensor(x, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.long)
+
+    def __len__(self):
+        return len(self.x)
+
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
+
+train_data = CustomData(train_x, train_y)
+validation_data = CustomData(val_x, val_y)
+test_data = CustomData(test_x, test_y)
+
+learning_rate = 0.00167
+epochnum = 200
+bsize = 16
+insize = 13
+hidden1 = 100
+hidden2 = 50
+outsize = 1
+patience = 10
+model = MLP(insize, hidden1, hidden2, outsize)
+# Loss fonksiyonunu belirlemek / Determining loss function
+criterion = nn.BCELoss()
+
+# Optimizer'ı belirlemek / Determining optimizer
+optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=bsize, shuffle=True)
+valid_loader = torch.utils.data.DataLoader(validation_data, batch_size=bsize, shuffle=False)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=bsize, shuffle=False)
+train_loss_list = []
+valid_loss_list = []
+patience_counter = 0
+best_value_loss = None
+for epoch in range(epochnum):
+    train_loss = 0.0
+    train_count = 0.0
+    valid_loss = 0.0
+
+    # Eğitim verileri üzerinde eğitim yapmak / Training
+    for data, target in train_loader:
+        optimizer.zero_grad()
+        output = model(data)
+        loss = criterion(output, target.unsqueeze(1).float())
+        loss.backward()
+        optimizer.step()
+        train_count += 1
+        train_loss += loss.item()
+
+    # Doğrulama verileri üzerinde test yapmak / Testing
+    with torch.no_grad():
+        model.eval()
+        for data, target in valid_loader:
+            output = model(data)
+            loss = criterion(output, target.unsqueeze(1).float())
+            valid_loss += loss.item()
+    
+    model.train()
+    # Loss değerlerini kaydetmek / Saving the Loss values
+    train_loss = train_loss / train_count
+    valid_loss = valid_loss / len(valid_loader)
+        
+    train_loss_list.append(train_loss)
+    valid_loss_list.append(valid_loss)
+    print('Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f}'.format(
+        epoch + 1, train_loss, valid_loss))
+    
+    val_score = valid_loss
+    if best_value_loss is None:
+        best_value_loss = val_score # hafızada patience boyu tutmaya başla
+        torch.save(model.state_dict(), "checkpoint.pt")
+    elif best_value_loss < val_score: # patience counter
+        patience_counter = patience_counter + 1
+        print("Earlystopping Patience Counter:",patience_counter)
+        if patience_counter == patience:
+            break
+    else:
+        best_value_loss = val_score
+        torch.save(model.state_dict(), "checkpoint.pt") # to keep the best model
+        patience_counter = 0
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+sns.set_style("whitegrid")
+plt.plot(train_loss_list, label="Training loss")
+plt.plot(valid_loss_list, label="Validation loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
+
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
+model.load_state_dict(torch.load('checkpoint.pt'))
+
+preds = []
+tlabels = []
+model.eval()
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        outputs = model(inputs)
+        predicted = torch.round(outputs)
+        preds.extend(predicted.detach().cpu().numpy())
+        tlabels.extend(labels.detach().cpu().numpy())
+
+accuracy = accuracy_score(tlabels, preds)
+f1 = f1_score(tlabels, preds)
+precision = precision_score(tlabels, preds)
+recall = recall_score(tlabels, preds)
+
+print(f'Accuracy: {accuracy:.4f}')
+print(f'F1 score: {f1:.4f}')
+print(f'Precision: {precision:.4f}')
+print(f'Recall: {recall:.4f}')
+
+end = time.time()
+elapsed = end - start
+print("Elapsed:", f'{elapsed:.2f}', "secs")
 \end{python}
 
 % Figure aşağıda comment içindeki kısımdaki gibi eklenir.
-\begin{comment}
+
 \begin{figure}[ht!]
     \centering
-    \includegraphics[width=0.75\textwidth]{mypicturehere.png}
-    \caption{Buraya açıklama yazın}
+    \includegraphics{plotoutput.png}
+    \caption{Plot çıktısı}
     \label{fig:my_pic}
 \end{figure}
-\end{comment}
+
 
 \subsection{(10 Puan)} \textbf{SEED=öğrenci numaranız set ettikten sonra altıncı haftada ödev olarak verdiğim gibi earlystopping'deki en iyi modeli kullanarak, Prensesi İyileştir test setinden accuracy, F1, precision ve recall değerlerini hesaplayan kodu yazın ve sonucu da aşağı yapıştırın. \%80'den fazla başarı bekliyorum test setinden. Daha düşükse başarı oranınız, nerede hata yaptığınızı bulmaya çalışın. \%90'dan fazla başarı almak mümkün (ben denedim).}
 
 \begin{python}
-kod_buraya = None
-if kod_buraya:
-    devam_ise_buraya = 0
 
-print(devam_ise_buraya)
+learning_rate = 0.0002786
+epochnum = 2000
+bsize = 16
+insize = 13
+hidden1 = 100
+hidden2 = 50
+outsize = 1
+patience = 10
+
+patience_counter = 0
+best_value_loss = None
+for epoch in range(epochnum):
+    train_loss = 0.0
+    train_count = 0.0
+    valid_loss = 0.0
+
+    # Eğitim verileri üzerinde eğitim yapmak / Training
+    for data, target in train_loader:
+        optimizer.zero_grad()
+        output = model(data)
+        loss = criterion(output, target.unsqueeze(1).float())
+        loss.backward()
+        optimizer.step()
+        train_count += 1
+        train_loss += loss.item()
+
+    # Doğrulama verileri üzerinde test yapmak / Testing
+    with torch.no_grad():
+        model.eval()
+        for data, target in valid_loader:
+            output = model(data)
+            loss = criterion(output, target.unsqueeze(1).float())
+            valid_loss += loss.item()
+    
+    model.train()
+    # Loss değerlerini kaydetmek / Saving the Loss values
+    train_loss = train_loss / train_count
+    valid_loss = valid_loss / len(valid_loader)
+        
+    train_loss_list.append(train_loss)
+    valid_loss_list.append(valid_loss)
+    print('Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f}'.format(
+        epoch + 1, train_loss, valid_loss))
+    
+    val_score = valid_loss
+    if best_value_loss is None:
+        best_value_loss = val_score # hafızada patience boyu tutmaya başla
+        torch.save(model.state_dict(), "checkpoint.pt")
+    elif best_value_loss < val_score: # patience counter
+        patience_counter = patience_counter + 1
+        print("Earlystopping Patience Counter:",patience_counter)
+        #if patience_counter == patience:
+        #    break
+    else:
+        best_value_loss = val_score
+        torch.save(model.state_dict(), "checkpoint.pt") # to keep the best model
+        patience_counter = 0
 \end{python}
-
-Sonuçlar buraya
 
 \subsection{(5 Puan)} \textbf{Tüm kodların CPU'da çalışması ne kadar sürüyor hesaplayın. Sonra to device yöntemini kullanarak modeli ve verileri GPU'ya atıp kodu bir de böyle çalıştırın ve ne kadar sürdüğünü hesaplayın. Süreleri aşağıdaki tabloya koyun. GPU için Google Colab ya da Kaggle'ı kullanabilirsiniz, iki ortam da her hafta saatlerce GPU hakkı veriyor.}
 
 \begin{table}[ht!]
     \centering
-    \caption{Buraya bir açıklama yazın}
+    \caption{100 epoch && batchsize =16}
     \begin{tabular}{c|c}
         Ortam & Süre (saniye) \\\hline
-        CPU & kaç? \\
-        GPU & kaç?\\
+        CPU & 3.04 secs\\
+        GPU & 23.09 secs\\
     \end{tabular}
     \label{tab:my_table}
 \end{table}
@@ -330,19 +543,17 @@ Sonuçlar buraya
 Cevaplar buraya
 
 % Figür aşağı
-\begin{comment}
 \begin{figure}[ht!]
     \centering
-    \includegraphics[width=0.75\textwidth]{mypicturehere.png}
-    \caption{Buraya açıklama yazın}
+    \includegraphics{plot.png}
+    \caption{Plot çıktısı}
     \label{fig:my_pic}
 \end{figure}
-\end{comment}
 
 \subsection{(2 Puan)} \textbf{Beşinci soruya ait tüm kodların ve cevapların olduğu jupyter notebook'un Github linkini aşağıdaki url'e koyun.}
 
-\url{www.benimgithublinkim.com}
-
+\url{https://github.com/sarpataturker/yapay_sinir_aglari/tree/main/MLP}
+\pagebreak
 \section{(Toplam 10 Puan)} \textbf{Bir önceki sorudaki Prensesi İyileştir problemindeki yapay sinir ağınıza seçtiğiniz herhangi iki farklı regülarizasyon yöntemi ekleyin ve aşağıdaki soruları cevaplayın.} 
 
 \subsection{(2 puan)} \textbf{Kodlarda regülarizasyon eklediğiniz kısımları aşağı koyun:} 
